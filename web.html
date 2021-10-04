@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Today's Steps</title>
+</head>
+<body>
+
+    <div id="plot_area" style="width:1000px;height:350px;"></div>
+
+    <script src="https://cdn.plot.ly/plotly-2.4.2.min.js"></script>
+    <script type="module">
+
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.0.2/firebase-app.js";
+        // TODO: Add SDKs for Firebase products that you want to use
+        // https://firebase.google.com/docs/web/setup#available-libraries
+
+        import { getFirestore, collection, setDoc, doc, query,where,getDocs,onSnapshot }
+        from "https://www.gstatic.com/firebasejs/9.0.2/firebase-firestore.js";
+
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+          apiKey: "AIzaSyBEfVGIj813l_RBo0GlKi_tFC4R81kZNBg",
+          authDomain: "steps-3eef0.firebaseapp.com",
+          projectId: "steps-3eef0",
+          storageBucket: "steps-3eef0.appspot.com",
+          messagingSenderId: "424820936830",
+          appId: "1:424820936830:web:2275174d8490c985ce482f"
+        };
+
+
+      // Initialize Firebase
+      const app = initializeApp(firebaseConfig);
+      const stepsRef = collection(getFirestore(app), 'steps');
+      const val = document.getElementById('stepsValue');
+
+
+      async function getMyStepsData() {
+
+
+        var array_x = [];
+        var array_y = [];
+        var sum = 0;
+
+
+        const q = query(stepsRef, where("x", ">=", 1200));
+        const querySnapshot = await getDocs(q);
+
+        // GET THE SNAPSHOT OF EACH doc
+        const unsubscribe = onSnapshot(q,(querySnapshot) =>{
+
+          let array_x = [];
+          let array_y = [];
+          let sum = 0;
+
+          querySnapshot.forEach((doc) => {
+            array_x.push(doc.data().x);
+            array_y.push(doc.data().y);
+            sum += doc.data().y;
+            });
+
+            // Initialize plotly
+            var plotly_data = [
+              {
+                x: array_x,
+                y: array_y,
+                type: 'scatter',
+                name: 'steps',
+                domain: { row: 1, column: 1 }
+              },
+             {
+                type: "indicator",
+                value: sum,
+                delta: { reference: sum - array_y[array_y.length -1 ] },
+                gauge: { axis: { visible: false, range: [0, 550] } },
+                domain: { row: 1, column: 1 }
+              }
+            ];
+
+            const plotly_elem = document.getElementById('plot_area');
+
+            const plotly_layout = {
+              margin: { t: 50},
+              grid: { rows: 1, columns: 2, pattern: "independent" },
+              title: 'Steps',
+              template: {
+                data: {
+                  indicator: [
+                    {
+                      mode: "number+delta+gauge"
+                    }
+                  ]
+                }
+              }
+            };
+
+            Plotly.newPlot(plotly_elem, plotly_data, plotly_layout);
+            console.log("x",array_x);
+            console.log("y",array_y);
+            console.log("sum",sum);
+        });
+
+      getMyStepsData();
+
+
+    </script>
+</body>
+</html>

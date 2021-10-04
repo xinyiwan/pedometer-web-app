@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Pedometer WebBLE Gateway</title>
+</head>
+<body>
+
+<div id="stepsValue" style="background-color: yellow; padding: 10pt; width: 30pt;">0</div>
+
+<p>
+<button id="startBtn">Start sensor</button>
+<button id="stopBtn">Stop sensor</button>
+<button id="zeroBtn">Zero</button>
+</p>
+
+<script type="module">
+
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.0.2/firebase-app.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+
+  import { getFirestore, collection, setDoc, doc }
+    from "https://www.gstatic.com/firebasejs/9.0.2/firebase-firestore.js";
+
+  const val = document.getElementById('stepsValue');
+  let targetDevice;
+  let serviceUART;
+  let charUARTRX;
+
+  const BLE_UART_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+  const BLE_UART_RX_CHAR = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+  const BLE_UART_TX_CHAR = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyBEfVGIj813l_RBo0GlKi_tFC4R81kZNBg",
+    authDomain: "steps-3eef0.firebaseapp.com",
+    projectId: "steps-3eef0",
+    storageBucket: "steps-3eef0.appspot.com",
+    messagingSenderId: "424820936830",
+    appId: "1:424820936830:web:2275174d8490c985ce482f"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const stepsRef = collection(getFirestore(app), 'steps');
+
+
+  console.log("init");
+
+  // Returns the time of day as an integer in the format HHMM, where
+  // HH is the hour and MM in the minutes. However, it will truncate the
+  // time to the lower 10 minute interval. I.e., if the time is 2:13pm,
+  // the result will be 1410.
+  function getTimestamp()
+  {
+    let d = new Date();
+    let m = d.getMinutes();
+    let v = m - (m%10) + 100 * d.getHours();
+    console.log("time", v);
+    return v;
+  }
+
+
+  function checkTime()
+  {
+    // Reset the counter in Micro:Bit
+    // sendZeroBluetooth();
+
+    // TODO: Make sure the Micro:Bit resets the counter at the start of
+    // every 10 minute interval. I.e., at 10:10am, 10:20am, 10:30am, and so on.
+    let t_now = new Date();
+    let min = t_now.getMinutes();
+    let sec = t_now.getSeconds();
+
+    if(min % 10 == 0 && sec < 10){
+      sendZeroBluetooth();
+    }
+
+
+  }
+
+
+  // This function is called when the Micro:Bit sends a value to the GW App.
+  // The Micro:Bit should send the latest step counter value every 10 seconds.
+
+  function handleBLENotifications(event)
+  {
+      checkTime();
+      let result = "";
+      for (var i = 0; i < event.target.value.byteLength; i++) {
+          result += String.fromCharCode(event.target.value.getUint8(i));
+      }
+
+
+      // TODO: Show it on the screen in the yellow box.
+        document.getElementById('stepsValue').innerHTML = result;
+
+      // TODO: Send the data to Firestore
+
+      let t = getTimestamp();
+      console.log(result);
+
+      let res = parseInt(result);
+      setDoc(doc(stepsRef, t.toString()), {x : t, y : res});
+  }
+
+
+  function startBluetooth()
+  {
+      console.log('Requesting Bluetooth Device...');
+      navigator.bluetooth.requestDevice({filters: [                                                                                   {services: [BLE_UART_SERVICE]},
+                                            {namePrefix: 'BBC micro:bit '}]})
+      .then(device => {
+            console.log('Connecting to GATT Server...');
+            targetDevice = device;
+            return device.gatt.connect();
+      })
+      .then(server => {
+            console.log('Getting Service...');
+            return server.getPrimaryService(BLE_UART_SERVICE);
+      })
+      .then(service => {
+            console.log('Got service');
+            serviceUART = service;
+            return service.getCharacteristic(BLE_UART_RX_CHAR);
+      })
+      .then(characteristic => {
+            console.log('Got char');
+            charUARTRX = characteristic;
+            return charUARTRX.startNotifications();
+      })
+      .then(_ => {
+            console.log('Notifications started');
+            charUARTRX.addEventListener('characteristicvaluechanged',
+                                              handleBLENotifications);
+      })
+      .catch(error =>{
+           console.error(error);
+      });
+  }
+
+  // If the Micro:Bit receives anything over BLE UART, it will reset its
+  // step counter. Hence, we just send an empty line.
+  function sendZeroBluetooth()
+  {
+    // First check for an active BLE connection.
+    if (serviceUART == null) {
+      return;
+    }
+
+    // Send new line to Micro:Bit
+    serviceUART.getCharacteristic(BLE_UART_TX_CHAR)
+    //.then(characteristic => characteristic.getDescriptor('gatt.characteristic_user_description'))
+    .then(descriptor => {
+      const encoder = new TextEncoder('utf-8');
+      return descriptor.writeValue(encoder.encode('\n'));
+    })
+    .catch(error => {
+      console.error(error);
+    });
+  }
+
+
+  document.getElementById('startBtn').addEventListener('click', () => {
+      startBluetooth();
+  });
+
+
+  document.getElementById('zeroBtn').addEventListener('click', () => {
+      sendZeroBluetooth();
+  });
+
+  document.getElementById('stopBtn').addEventListener('click', () => {
+    if (serviceUART == null) {
+      return;
+    }
+
+    charUARTRX.stopNotifications()
+    .then(_ => {
+        console.log('Notifications stopped');
+        charUARTRX.removeEventListener('characteristicvaluechanged',
+                                       handleBLENotifications);
+        serviceUART = null;
+        targetDevice.gatt.disconnect();
+    })
+    .catch(error => {
+        console.log('Argh! ' + error);
+    });
+  });
+
+  checkTime();
+
+</script>
+</body>
+</html>
